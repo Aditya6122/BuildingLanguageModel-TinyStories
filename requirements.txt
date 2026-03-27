@@ -1,0 +1,6 @@
+datasets
+tokenizers
+matplotlib
+torch
+transformers
+wandb
