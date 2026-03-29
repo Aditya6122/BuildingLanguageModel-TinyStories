@@ -3,11 +3,12 @@ Tokenizer training module.
 
 This module handles the training and evaluation of BPE tokenizers.
 """
-
-import logging
+import os
+import random
 import math
+import logging
 from tqdm import tqdm
-from tokenizers import ByteLevelBPETokenizer
+from tokenizers import CharBPETokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -31,58 +32,26 @@ def train_tokenizer(text_file, vocab_size=None, min_frequency=2, special_tokens=
             "<|pad|>",
             "<|start_of_text|>",
             "<|end_of_text|>",
-            "<unk>",
+            "<|unk|>"
         ]
 
     logger.info(f"Training {tokenizer_type} tokenizer with vocab_size={vocab_size}, min_frequency={min_frequency}")
     logger.info(f"Special tokens: {special_tokens}")
 
-    # Import here to avoid issues
-    from tokenizers import Tokenizer, CharBPETokenizer, ByteLevelBPETokenizer
-    from tokenizers.models import BPE, WordLevel
-    from tokenizers.pre_tokenizers import Whitespace, ByteLevel
-    from tokenizers.trainers import BpeTrainer, WordLevelTrainer
-
-    if tokenizer_type == 'byte_level_bpe':
-        tokenizer = Tokenizer(ByteLevelBPETokenizer())
-        tokenizer.pre_tokenizer = ByteLevel()
-        trainer = BpeTrainer(
-            vocab_size=vocab_size,
-            min_frequency=min_frequency,
-            special_tokens=special_tokens,
-            show_progress=True
-        )
-    elif tokenizer_type == 'char_bpe':
+    if tokenizer_type == 'char_bpe':
         tokenizer = CharBPETokenizer()
-        trainer = BpeTrainer(
-            vocab_size=vocab_size,
-            min_frequency=min_frequency,
-            special_tokens=special_tokens,
-            show_progress=True
-        )
-    elif tokenizer_type == 'bpe':
-        tokenizer = Tokenizer(BPE())
-        tokenizer.pre_tokenizer = Whitespace()
-        trainer = BpeTrainer(
-            vocab_size=vocab_size,
-            min_frequency=min_frequency,
-            special_tokens=special_tokens,
-            show_progress=True
-        )
-    elif tokenizer_type == 'word_level':
-        tokenizer = Tokenizer(WordLevel())
-        tokenizer.pre_tokenizer = Whitespace()
-        trainer = WordLevelTrainer(
-            vocab_size=vocab_size,
-            min_frequency=min_frequency,
-            special_tokens=special_tokens,
-            show_progress=True
-        )
     else:
         raise ValueError(f"Unsupported tokenizer type: {tokenizer_type}")
 
     # Train
-    tokenizer.train([text_file], trainer)
+    train_kwargs = {}
+    if vocab_size is not None:
+        train_kwargs['vocab_size'] = vocab_size
+    if min_frequency is not None:
+        train_kwargs['min_frequency'] = min_frequency
+    if special_tokens is not None:
+        train_kwargs['special_tokens'] = special_tokens
+    tokenizer.train([text_file], **train_kwargs)
 
     logger.info("Tokenizer training completed")
     return tokenizer
@@ -159,3 +128,36 @@ def evaluate_tokenizer_dataset(tokenizer, dataset, batch_size=10000):
 
     logger.info(f"Evaluation metrics: {metrics}")
     return metrics
+
+def prepare_text_file(train_dataset, temp_dir, output_file="full_text.txt"):
+    """
+    Combine all training texts into a single file for tokenizer training.
+
+    Args:
+        train_dataset: Training dataset.
+        temp_dir (str): Temporary directory path.
+        output_file (str): Output file name.
+
+    Returns:
+        str: Path to the output file.
+    """
+    logger.info("Preparing text file for tokenizer training")
+    full_text = "\n".join(train_dataset['text'])
+
+    output_path = os.path.join(temp_dir, output_file)
+    with open(output_path, 'w') as f:
+        f.write(full_text)
+
+    logger.info(f"Text file written to {output_path} with {len(full_text)} characters")
+    return output_path
+
+
+def show_example(train_dataset):
+    """
+    Display a random example from the dataset.
+
+    Args:
+        train_dataset: Dataset to sample from.
+    """
+    example = train_dataset[random.randint(0, len(train_dataset) - 1)]['text']
+    logger.info(f"Example story:\n\n{example}")

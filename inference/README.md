@@ -1,19 +1,6 @@
 # Inference Scripts
 
-This directory contains scripts for testing trained models and tokenizers downloaded from Hugging Face.
-
-## Tokenizer Inference
-
-Test a tokenizer from Hugging Face:
-
-```bash
-python inference/tokenizer_inference.py --repo aditya-6122/tinystories-tokenizer-vb-4000-byte_level_bpe-v1
-```
-
-For interactive testing:
-```bash
-python inference/tokenizer_inference.py --repo aditya-6122/tinystories-tokenizer-vb-4000-byte_level_bpe-v1 --interactive
-```
+This directory contains scripts for testing trained models downloaded from Hugging Face.
 
 ## Model Inference
 
@@ -21,16 +8,24 @@ Generate text with a trained model:
 
 ```bash
 python inference/model_inference.py \
-  --model-repo aditya-6122/tinystories-model \
-  --tokenizer-repo aditya-6122/tinystories-tokenizer-vb-4000-byte_level_bpe-v1 \
-  --prompt "Once upon a time" \
-  --max-tokens 100
+  --model-repo aditya-6122/tiny-stories-vb-17831-cbpe-v1 \
+  --start-text "Once upon a time" \
+  --max-new-tokens 100 \
+  --temperature 0.8 \
+  --top-k 50 \
+  --top-p 0.9 \
+  --stream
 ```
 
-For interactive generation:
-```bash
-python inference/model_inference.py \
-  --model-repo aditya-6122/tinystories-model \
-  --tokenizer-repo aditya-6122/tinystories-tokenizer-vb-4000-byte_level_bpe-v1 \
-  --interactive
-```
+### Arguments
+
+- `--model-repo`: Hugging Face model repository (default: aditya-6122/tiny-stories-vb-17831-cbpe-v1)
+- `--start-text`: Starting text for generation (default: "Once there was a")
+- `--max-new-tokens`: Maximum number of new tokens to generate (default: 1000)
+- `--temperature`: Sampling temperature (0 for greedy, higher for more random, default: 0.2)
+- `--top-k`: Top-k sampling (optional, default: None)
+- `--top-p`: Top-p (nucleus) sampling (optional, default: None)
+- `--stream`: Stream output token by token (default: enabled)
+- `--no-stream`: Disable streaming, output all at once
+
+For interactive generation or custom prompts, modify the arguments as needed.
