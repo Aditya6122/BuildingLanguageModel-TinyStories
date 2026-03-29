@@ -24,24 +24,6 @@ The model uses Gated Recurrent Units (GRUs) with layer normalization for stable 
 
 **Note**: The `model_arch.jpg` file should be in the project root showing the GRU architecture flow.
 
-#### ASCII Architecture Overview:
-```
-Input Tokens → Embedding → [GRU Cell] → Output Logits
-                        ↓
-                   Hidden State
-                        ↗
-              Reset/Update Gates
-```
-
-Where GRU Cell contains:
-```
-Input + Prev Hidden → Layer Norm → Reset Gate → * Prev Hidden → Layer Norm → Candidate
-                        ↓                                           ↓
-                   Update Gate ←─────────────────────────────┐
-                        ↓                                   ↓
-              Interpolate: (1-z)*old + z*new ←───────────────┘
-```
-
 ### Components
 
 #### 1. **Input Embedding Layer**
