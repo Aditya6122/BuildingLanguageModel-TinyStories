@@ -66,20 +66,23 @@ The core recurrent component with three gates:
 
 1. Train a tokenizer:
 ```bash
-python tokenization/main_tokenizer.py --tokenizer-type byte_level_bpe
+python -m  tokenization.main_tokenizer --tokenizer-type byte_level_bpe # add required arguments if any
+```
+
+2. Process the dataset:
+```bash
+python -m data.process_dataset # add rquired arguments if any
 ```
 
 2. Train the model:
 ```bash
-python main.py
-```
+python -m main # add required arguments if any
+``` 
 
 ## Supported Tokenizer Types
 
 - `byte_level_bpe`: Byte-level BPE (default)
 - `char_bpe`: Character-level BPE
-- `bpe`: Word-level BPE
-- `word_level`: Word-level tokenizer
 
 ## Inference
 
