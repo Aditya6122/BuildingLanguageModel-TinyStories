@@ -14,7 +14,18 @@ import os
 logger = logging.getLogger(__name__)
 
 
-def train_model(model, train_loader, val_loader, tokenizer, learning_rate=1e-3, epochs=10, device="cuda", run_name="LM"):
+def train_model(
+    model,
+    train_loader,
+    val_loader,
+    tokenizer,
+    learning_rate=1e-3,
+    epochs=10,
+    device="cuda",
+    checkpoint_dir="./model_artifacts",
+    validation_prompt="Once upon a time",
+    max_new_tokens=100,
+):
     """
     Train the language model with validation and logging.
 
@@ -27,6 +38,10 @@ def train_model(model, train_loader, val_loader, tokenizer, learning_rate=1e-3, 
         epochs (int): Number of training epochs.
         device (str): Device to run training on.
         run_name (str): Name for the run (for logging).
+        checkpoint_dir (str): Directory to save model checkpoints.
+        wandb_project (str): WANDB project name.
+        validation_prompt (str): Prompt used for generation during validation.
+        max_new_tokens (int): Tokens to generate when evaluating validation sample.
     """
     logger.info(f"Starting training for {epochs} epochs on {device}")
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -34,7 +49,7 @@ def train_model(model, train_loader, val_loader, tokenizer, learning_rate=1e-3, 
     last_val_train_diff = 0
 
     # Create directory for checkpoints
-    os.makedirs("./model_artifacts", exist_ok=True)
+    os.makedirs(checkpoint_dir, exist_ok=True)
 
     for epoch in range(epochs):
         logger.info(f"Epoch {epoch+1}/{epochs} started")
@@ -71,7 +86,7 @@ def train_model(model, train_loader, val_loader, tokenizer, learning_rate=1e-3, 
         logger.info(f"Epoch {epoch+1} training completed. Avg loss: {avg_train_loss:.4f}")
 
         # SAVE PER EPOCH MODEL CHECKPOINT
-        checkpoint_path = f"./model_artifacts/pytorch_model_checkpoint_epoch_{epoch+1}.bin"
+        checkpoint_path = f"{checkpoint_dir}/pytorch_model_checkpoint_epoch_{epoch+1}.bin"
         torch.save(model.state_dict(), checkpoint_path)
         logger.info(f"Model checkpoint saved: {checkpoint_path}")
 
@@ -96,13 +111,12 @@ def train_model(model, train_loader, val_loader, tokenizer, learning_rate=1e-3, 
                 })
 
             # Generate sample
-            input_word = "Once upon a time"
+            input_word = validation_prompt
             input_token_id = tokenizer.encode(input_word).ids
 
             input_tensor = torch.tensor([input_token_id]).to(device)
-            output_tokens = model.generate(input_tensor, max_new_tokens=100)
-
-            output_words = input_word + " " + tokenizer.decode(output_tokens[0].tolist())
+            generated_text = model.generate(input_tensor, tokenizer, max_new_tokens=max_new_tokens)
+            output_words = input_word + " " + generated_text
             logger.info(f"Generated Story: {output_words}")
 
         avg_val_loss = total_val_loss / len(val_loader)
@@ -118,4 +132,3 @@ def train_model(model, train_loader, val_loader, tokenizer, learning_rate=1e-3, 
         logger.info(f"Epoch {epoch+1}: Train Loss = {avg_train_loss:.4f}, Val Loss = {avg_val_loss:.4f}")
 
     logger.info("Training completed")
-    wandb.finish()
