@@ -9,6 +9,11 @@ import math
 import logging
 from tqdm import tqdm
 from tokenizers import CharBPETokenizer
+from tokenizers import Tokenizer
+from tokenizers.models import BPE
+from tokenizers.trainers import BpeTrainer
+from tokenizers.pre_tokenizers import ByteLevel
+from tokenizers.decoders import ByteLevel as ByteLevelDecoder
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +43,6 @@ def train_tokenizer(text_file, vocab_size=None, min_frequency=2, special_tokens=
     logger.info(f"Training {tokenizer_type} tokenizer with vocab_size={vocab_size}, min_frequency={min_frequency}")
     logger.info(f"Special tokens: {special_tokens}")
 
-    if tokenizer_type == 'char_bpe':
-        tokenizer = CharBPETokenizer()
-    else:
-        raise ValueError(f"Unsupported tokenizer type: {tokenizer_type}")
-
-    # Train
     train_kwargs = {}
     if vocab_size is not None:
         train_kwargs['vocab_size'] = vocab_size
@@ -51,7 +50,19 @@ def train_tokenizer(text_file, vocab_size=None, min_frequency=2, special_tokens=
         train_kwargs['min_frequency'] = min_frequency
     if special_tokens is not None:
         train_kwargs['special_tokens'] = special_tokens
-    tokenizer.train([text_file], **train_kwargs)
+
+    if tokenizer_type == 'char_bpe':
+        tokenizer = CharBPETokenizer()
+        tokenizer.train([text_file], **train_kwargs)
+
+    elif tokenizer_type == 'byte_level_bpe':
+        tokenizer = Tokenizer(BPE(unk_token="<|unk|>"))
+        tokenizer.pre_tokenizer = ByteLevel()
+        tokenizer.decoder = ByteLevelDecoder()
+        trainer = BpeTrainer(**train_kwargs)
+        tokenizer.train([text_file], trainer=trainer)
+    else:
+        raise ValueError(f"Unsupported tokenizer type: {tokenizer_type}")
 
     logger.info("Tokenizer training completed")
     return tokenizer

@@ -112,7 +112,7 @@ if __name__ == "__main__":
             stream=stream,
         ):
             generated_text += chunk
-            print(chunk, end=" ", flush=True)
+            print(chunk, end="", flush=True)
 
         print()  # newline after streaming
     else:

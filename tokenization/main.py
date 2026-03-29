@@ -103,7 +103,7 @@ if __name__ == "__main__":
     parser.add_argument('--val-samples', type=int, default=20000, help='Number of validation samples')
     parser.add_argument('--tokenizer-type', type=str, default='char_bpe', choices=['byte_level_bpe', 'char_bpe', 'bpe', 'word_level'], help='Type of tokenizer to train')
     parser.add_argument('--tokenizer-repo', type=str, default="aditya-6122/tinystories-tokenizer", help='Tokenizer repo on Hugging Face')
-    parser.add_argument('--version-suffix', type=str, default="v1-test", help='Version string for the tokenizer upload')
+    parser.add_argument('--version-suffix', type=str, default="v2-test", help='Version string for the tokenizer upload')
 
     args = parser.parse_args()
     main(args.dataset_name, args.vocab_size, args.min_frequency, args.max_text_length, args.train_samples, args.val_samples, args.tokenizer_type, args.tokenizer_repo, args.version_suffix)

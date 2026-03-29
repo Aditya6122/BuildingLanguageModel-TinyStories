@@ -242,7 +242,7 @@ def parse_args():
     parser.add_argument("--num-workers", type=int, default=NUM_WORKERS)
     parser.add_argument("--run-name", type=str, default=RUN_NAME)
     parser.add_argument("--model-name", type=str, default=MODEL_NAME)
-    parser.add_argument("--train-sample", action='store_true', help="Whether to run a quick training sample for testing the pipeline", default=True)
+    parser.add_argument("--train-sample", action='store_true', help="Run quick training sample")
     parser.add_argument("--checkpoint-dir", type=str, default="./model_artifacts")
     parser.add_argument("--wandb-project", type=str, default="tinystories-training")
     parser.add_argument("--validation-prompt", type=str, default="Once upon a time")
@@ -277,7 +277,7 @@ def main():
     eot_token_id = tokenizer.token_to_id("<|end_of_text|>")
     logger.info(f"EOT Token Id : {eot_token_id}")
 
-    if torch.mps.is_available():
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         logger.info("MPS backend is available. You can use Apple Silicon GPU for training.")
         device = "mps"
     elif torch.cuda.is_available():

@@ -116,7 +116,7 @@ def train_model(
 
             input_tensor = torch.tensor([input_token_id]).to(device)
             generated_text = model.generate(input_tensor, tokenizer, max_new_tokens=max_new_tokens)
-            output_words = input_word + " " + generated_text
+            output_words = input_word + generated_text
             logger.info(f"Generated Story: {output_words}")
 
         avg_val_loss = total_val_loss / len(val_loader)

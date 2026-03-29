@@ -37,7 +37,7 @@ def main(tokenizer_repo):
         print(f"Encoded: {encoded.ids}")
 
         # Decode
-        decoded = tokenizer.decode(encoded.ids)
+        decoded = tokenizer.decode(encoded.ids).strip()
         print(f"Decoded: {decoded}")
 
         # Check if round-trip works

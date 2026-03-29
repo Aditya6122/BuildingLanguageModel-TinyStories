@@ -221,14 +221,16 @@ class LanguageModel(nn.Module):
                     if token_id == eos_token_id:
                         break
 
-                    text_piece = tokenizer.decode([token_id])
-                    yield text_piece
+                    # Decode the new token with proper whitespace handling
+                    token_text = tokenizer.decode([token_id])
+                    yield token_text
+
                     last_token = next_token
 
         if stream:
             return _generate_tokens()
         else:
-            generated_text = ""
+            generated_tokens = []
             with torch.no_grad():
                 # Process prompt
                 for t in range(x.shape[1]):
@@ -240,12 +242,13 @@ class LanguageModel(nn.Module):
                     logits, memory = self.step(last_token, memory)
                     next_token = sample(logits)
                     token_id = next_token.item()
+                    generated_tokens.append(token_id)
 
                     if token_id == eos_token_id:
                         break
 
-                    text_piece = tokenizer.decode([token_id])
-                    generated_text += f" {text_piece}"
                     last_token = next_token
+                
+            generated_text = tokenizer.decode(generated_tokens)
 
             return generated_text

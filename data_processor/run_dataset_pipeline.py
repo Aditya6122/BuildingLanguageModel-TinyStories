@@ -20,7 +20,7 @@ def main():
     parser.add_argument('--output-repo', type=str, default="aditya-6122/tinystories-custom-dataset", help='Destination processed dataset repo base name')
     parser.add_argument('--version', type=str, default='v1-test', help='Version suffix for output repo')
     parser.add_argument('--text-column', type=str, default='text', help='Text column in source dataset')
-    parser.add_argument('--num-proc', type=int, default=4, help='Number of processes for dataset mapping')
+    parser.add_argument('--num-proc', type=int, default=8, help='Number of processes for dataset mapping')
 
     args = parser.parse_args()
 
