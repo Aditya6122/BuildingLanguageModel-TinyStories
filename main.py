@@ -15,6 +15,7 @@ import torch
 import wandb
 import os
 import uuid
+import json
 import shutil
 from huggingface_hub import HfApi
 
@@ -194,11 +195,20 @@ def upload_model_to_hf(checkpoint_dir, model_name, dataset_name, tokenizer_name,
     readme_path = os.path.join(checkpoint_dir, "README.md")
     with open(readme_path, "w") as f:
         f.write(readme_content)
+
+    model_config = {
+        "vocab_size": vocab_size,
+        "embedding_dimension": embedding_dim,
+        "hidden_dimension": hidden_dim,
+    }
+    model_config_path = os.path.join(checkpoint_dir, "model_config.json")
+    with open(model_config_path, "w") as f:
+        json.dump(model_config, f)
     
     # Upload files
     api.upload_file(
         path_or_fileobj=os.path.join(checkpoint_dir, "model.bin"),
-        path_in_repo="model.bin",
+        path_in_repo="pytorch_model.bin",
         repo_id=repo_name,
         token=HF_TOKEN
     )
@@ -211,6 +221,12 @@ def upload_model_to_hf(checkpoint_dir, model_name, dataset_name, tokenizer_name,
     api.upload_file(
         path_or_fileobj=readme_path,
         path_in_repo="README.md",
+        repo_id=repo_name,
+        token=HF_TOKEN
+    )
+    api.upload_file(
+        path_or_fileobj=os.path.join(checkpoint_dir, "model_config.json"),
+        path_in_repo="model_config.json",
         repo_id=repo_name,
         token=HF_TOKEN
     )
