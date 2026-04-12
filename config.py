@@ -20,8 +20,8 @@ if WANDB_API_KEY is None:
     raise ValueError("WANDB_API_KEY not found in environment")
 
 # Dataset and tokenizer configuration
-DATASET_NAME = "aditya-6122/tinystories-custom-dataset-17783-v1-test"
-TOKENIZER_NAME = "aditya-6122/tinystories-tokenizer-vb-17783-char_bpe-v1-test"
+DATASET_NAME = "aditya-6122/tinystories-custom-dataset-18542-v2-test"
+TOKENIZER_NAME = "aditya-6122/tinystories-tokenizer-vb-18542-byte_level_bpe-v3-test"
 
 # Model hyperparameters
 EMBEDDING_DIMENSION = 512
@@ -34,5 +34,5 @@ BATCH_SIZE = 2
 NUM_WORKERS = 1
 
 # Experiment configuration
-RUN_NAME = "LM-v26-test"
+RUN_NAME = "LM-v33"
 MODEL_NAME = "vanilla-rnn-gru-like"

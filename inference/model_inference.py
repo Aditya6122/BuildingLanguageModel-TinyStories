@@ -23,7 +23,7 @@ def get_device():
         return torch.device("cpu")
 
 
-def load_model_from_hub(model_repo, model_file='pytorch_model.bin',  tokenizer_file="tokenizer.json", repo_type='model', model_config_file="model_config.json", device='cpu'):
+def load_model_from_hub(model_repo, model_file='model.bin',  tokenizer_file="tokenizer.json", repo_type='model', model_config_file="model_config.json", device='cpu'):
     """
     Load a PyTorch model from Hugging Face Hub.
 
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     parser.add_argument('--model-repo', type=str, default='aditya-6122/tiny-stories-vb-17831-cbpe-v1', help='Hugging Face model repository (e.g., user/repo-name)')
     parser.add_argument('--start-text', type=str, default='Once there was a', help='Starting text for generation')
     parser.add_argument('--max-new-tokens', type=int, default=1000, help='Maximum number of new tokens to generate')
-    parser.add_argument('--temperature', type=float, default=0.2, help='Sampling temperature (0 for greedy, higher for more random)')
+    parser.add_argument('--temperature', type=float, default=0.1, help='Sampling temperature (0 for greedy, higher for more random)')
     parser.add_argument('--top-k', type=int, default=None, help='Top-k sampling (optional)')
     parser.add_argument('--top-p', type=float, default=None, help='Top-p (nucleus) sampling (optional)')
     parser.add_argument('--stream', action='store_true', default=False, help='Stream output token by token (default: True)')
