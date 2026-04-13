@@ -57,11 +57,7 @@ class LanguageModel(nn.Module):
 
         # Layer normalization for stability
         self.ln_combined = nn.LayerNorm(self.embed_dim + self.hidden_dim)
-        self.ln_reset_combined = nn.LayerNorm(self.embed_dim + self.hidden_dim)
         self.ln_hidden = nn.LayerNorm(self.hidden_dim)
-
-        # Added: Layer normalization for gates to stabilize sigmoid inputs
-        self.ln_gates = nn.LayerNorm(self.hidden_dim)
 
     def step(self, x_t, memory):
         """
@@ -84,19 +80,17 @@ class LanguageModel(nn.Module):
 
         # Reset gate: decides what parts of previous memory to forget
         reset_gate_activations = self.W_r(combined)  # (B, H)
-        reset_gate_activations = self.ln_gates(reset_gate_activations)  # normalize before sigmoid
         reset_gate_activations = torch.sigmoid(reset_gate_activations)
         reset_memory = reset_gate_activations * memory # (B, H) - selectively forget
 
         # Compute candidate memory with reset memory
         reset_combined = torch.cat([reset_memory, x_emb], dim=1) # (B, H+D)
-        reset_combined = self.ln_reset_combined(reset_combined)
+        reset_combined = self.ln_combined(reset_combined)
         candidate_memory = torch.tanh(self.W_n(reset_combined)) # (B, H) - new candidate
         candidate_memory = self.ln_hidden(candidate_memory)
 
         # Update gate: decides how much to update from candidate vs keep old
         update_gate_activations = self.W_z(combined)  # (B, H)
-        update_gate_activations = self.ln_gates(update_gate_activations)  # normalize before sigmoid
         update_gate_activations = torch.sigmoid(update_gate_activations)
 
         final_memory = update_gate_activations*memory + (1 - update_gate_activations)*candidate_memory # (B, H)
