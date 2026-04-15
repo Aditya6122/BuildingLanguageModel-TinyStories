@@ -21,9 +21,11 @@ from huggingface_hub import HfApi
 
 from config import (
     DATASET_NAME,
+    NUM_LAYERS,
     TOKENIZER_NAME,
     EMBEDDING_DIMENSION,
-    HIDDEN_DIMENSION,
+    NUM_HEADS,
+    MAX_SEQ_LEN,
     LEARNING_RATE,
     EPOCHS,
     BATCH_SIZE,
@@ -32,7 +34,7 @@ from config import (
     MODEL_NAME,
     HF_TOKEN,
 )
-from models.language_model import LanguageModel
+from models.language_model import TinyStoriesLanguageModel as LanguageModel
 from data_processor.dataset import load_tokenizer, load_datasets, prepare_datasets, create_dataloaders
 from training.train import train_model
 
@@ -95,7 +97,6 @@ The model uses the [{tokenizer_name}](https://huggingface.co/{tokenizer_name}) t
 ### Model Architecture
 - **Architecture Type**: RNN-based language model with GRU cells
 - **Embedding Dimension**: {embedding_dim}
-- **Hidden Dimension**: {hidden_dim}
 - **Vocabulary Size**: {vocab_size}
 - **Architecture Diagram**: See `model_arch.jpg` for visual representation
 
@@ -118,7 +119,7 @@ tokenizer = Tokenizer.from_file("tokenizer.json")
 
 # Load model
 vocab_size = tokenizer.get_vocab_size()
-model = LanguageModel(vocab_size=vocab_size, embedding_dimension={embedding_dim}, hidden_dimension={hidden_dim})
+model = LanguageModel(vocab_size=vocab_size, embedding_dimension={embedding_dim}, hidden_dimension={embedding_dim}, num_layers={num_layers})
 model.load_state_dict(torch.load("model.bin"))
 model.eval()
 
@@ -163,7 +164,7 @@ def cleanup_model_artifacts(checkpoint_dir):
         logger.info(f"Cleaned up local model artifacts in {checkpoint_dir}.")
 
 
-def upload_model_to_hf(checkpoint_dir, model_name, dataset_name, tokenizer_name, tokenizer, vocab_size, embedding_dim, hidden_dim, epochs, batch_size, learning_rate):
+def upload_model_to_hf(checkpoint_dir, model_name, dataset_name, tokenizer_name, tokenizer, vocab_size, embedding_dim, num_heads, max_seq_len, num_layers, epochs, batch_size, learning_rate):
     """Upload model artifacts and tokenizer to Hugging Face Hub."""
     api = HfApi()
     user_info = api.whoami(token=HF_TOKEN)
@@ -179,27 +180,28 @@ def upload_model_to_hf(checkpoint_dir, model_name, dataset_name, tokenizer_name,
     
     # Create README.md with description
     model_name_slug = model_name.replace(' ', '-').lower()
-    readme_content = MODEL_CARD_TEMPLATE.format(
-        dataset_name=dataset_name,
-        model_name=model_name,
-        epochs=epochs,
-        batch_size=batch_size,
-        learning_rate=learning_rate,
-        tokenizer_name=tokenizer_name,
-        embedding_dim=embedding_dim,
-        hidden_dim=hidden_dim,
-        vocab_size=vocab_size,
-        repo_name=repo_name,
-        model_name_slug=model_name_slug
-    )
-    readme_path = os.path.join(checkpoint_dir, "README.md")
-    with open(readme_path, "w") as f:
-        f.write(readme_content)
+    # readme_content = MODEL_CARD_TEMPLATE.format(
+    #     dataset_name=dataset_name,
+    #     model_name=model_name,
+    #     epochs=epochs,
+    #     batch_size=batch_size,
+    #     learning_rate=learning_rate,
+    #     tokenizer_name=tokenizer_name,
+    #     embedding_dim=embedding_dim,
+    #     vocab_size=vocab_size,
+    #     repo_name=repo_name,
+    #     model_name_slug=model_name_slug
+    # )
+    # readme_path = os.path.join(checkpoint_dir, "README.md")
+    # with open(readme_path, "w") as f:
+    #     f.write(readme_content)
 
     model_config = {
         "vocab_size": vocab_size,
         "embedding_dimension": embedding_dim,
-        "hidden_dimension": hidden_dim,
+        "num_heads": num_heads,
+        "max_seq_len": max_seq_len,
+        "num_layers": num_layers,   
     }
     model_config_path = os.path.join(checkpoint_dir, "model_config.json")
     with open(model_config_path, "w") as f:
@@ -218,12 +220,12 @@ def upload_model_to_hf(checkpoint_dir, model_name, dataset_name, tokenizer_name,
         repo_id=repo_name,
         token=HF_TOKEN
     )
-    api.upload_file(
-        path_or_fileobj=readme_path,
-        path_in_repo="README.md",
-        repo_id=repo_name,
-        token=HF_TOKEN
-    )
+    # api.upload_file(
+    #     path_or_fileobj=readme_path,
+    #     path_in_repo="README.md",
+    #     repo_id=repo_name,
+    #     token=HF_TOKEN
+    # )
     api.upload_file(
         path_or_fileobj=os.path.join(checkpoint_dir, "model_config.json"),
         path_in_repo="model_config.json",
@@ -251,7 +253,9 @@ def parse_args():
     parser.add_argument("--dataset-name", type=str, default=DATASET_NAME)
     parser.add_argument("--tokenizer-name", type=str, default=TOKENIZER_NAME)
     parser.add_argument("--embedding-dimension", type=int, default=EMBEDDING_DIMENSION)
-    parser.add_argument("--hidden-dimension", type=int, default=HIDDEN_DIMENSION)
+    parser.add_argument("--num-heads", type=int, default=NUM_HEADS)
+    parser.add_argument("--max-seq-len", type=int, default=MAX_SEQ_LEN)
+    parser.add_argument("--num-layers", type=int, default=NUM_LAYERS)
     parser.add_argument("--learning-rate", type=float, default=LEARNING_RATE)
     parser.add_argument("--epochs", type=int, default=EPOCHS)
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
@@ -325,7 +329,7 @@ def main():
 
     # Instantiate model
     logger.info("Instantiating model...")
-    model = LanguageModel(vocab_size=vocab_size, embedding_dimension=args.embedding_dimension, hidden_dimension=args.hidden_dimension)
+    model = LanguageModel(vocab_size=vocab_size, d_model=args.embedding_dimension, num_heads=args.num_heads, max_seq_len=args.max_seq_len, num_layers=args.num_layers)
     total_params = sum(p.numel() for p in model.parameters())
     logger.info(f"Total params: {total_params:,}")
 
@@ -339,11 +343,11 @@ def main():
             "dataset_name": args.dataset_name,
             "tokenizer_name": args.tokenizer_name,
             "embedding_dimension": args.embedding_dimension,
-            "hidden_dimension": args.hidden_dimension,
+            "num_heads": args.num_heads,
+            "max_seq_len": args.max_seq_len,
+            "num_layers": args.num_layers,
             "total_params": total_params,
             "vocab_size": vocab_size,
-            "sequence_len": -1,
-            "sequence_overlap_ratio": -1,
             "train_data_points": len(train_loader),
             "val_data_points": len(val_loader),
             "batch_size": args.batch_size,
@@ -380,7 +384,7 @@ def main():
     cleanup_wandb()
 
     # Upload model to Hugging Face
-    upload_model_to_hf(checkpoint_dir, args.model_name, args.dataset_name, args.tokenizer_name, tokenizer, vocab_size, args.embedding_dimension, args.hidden_dimension, args.epochs, args.batch_size, args.learning_rate)
+    upload_model_to_hf(checkpoint_dir, args.model_name, args.dataset_name, args.tokenizer_name, tokenizer, vocab_size, args.embedding_dimension, args.num_heads, args.max_seq_len, args.num_layers, args.epochs, args.batch_size, args.learning_rate)
 
     # Cleanup local model artifacts
     cleanup_model_artifacts(checkpoint_dir)

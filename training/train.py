@@ -24,7 +24,7 @@ def train_model(
     device="cuda",
     checkpoint_dir="./model_artifacts",
     validation_prompt="Once upon a time",
-    max_new_tokens=100,
+    max_new_tokens=500,
 ):
     """
     Train the language model with validation and logging.
@@ -45,6 +45,7 @@ def train_model(
     """
     logger.info(f"Starting training for {epochs} epochs on {device}")
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
     model = model.to(device)
     last_val_train_diff = 0
 
@@ -60,10 +61,11 @@ def train_model(
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]")
 
         for batch_num, (x_batch, y_batch) in enumerate(pbar, 1):
+
             x_batch = x_batch.to(device)
             y_batch = y_batch.to(device)
 
-            logits, _, loss = model(x_batch, y_batch)
+            logits, loss = model(x_batch, y_batch)
 
             optimizer.zero_grad()
             loss.backward()
@@ -101,7 +103,7 @@ def train_model(
                 x_batch = x_batch.to(device)
                 y_batch = y_batch.to(device)
 
-                logits, _, loss = model(x_batch, y_batch)
+                logits, loss = model(x_batch, y_batch)
                 total_val_loss += loss.item()
 
                 avg_val_so_far = total_val_loss / batch_num

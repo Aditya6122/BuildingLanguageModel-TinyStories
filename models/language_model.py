@@ -1,254 +1,199 @@
-"""
-Language model implementation using GRU-like architecture.
-
-This module defines the LanguageModel class with gated recurrent units,
-layer normalization, and text generation capabilities.
-
-The model processes sequences token-by-token using GRU cells that maintain
-a hidden state (memory) across timesteps, with gating mechanisms to control
-information flow and prevent vanishing gradients.
-"""
-
+import math
 import torch
 import torch.nn as nn
-from torch.functional import F
+import torch.nn.functional as F
 
 
-class LanguageModel(nn.Module):
-    """
-    A language model based on GRU (Gated Recurrent Unit) architecture with layer normalization.
-
-    This model implements a simplified GRU with:
-    - Reset gate: Controls what information from previous state to forget
-    - Update gate: Controls how much to update the hidden state
-    - Candidate gate: Computes new memory candidate
-    - Layer normalization for training stability
-    - Output projection to vocabulary logits
-
-    Architecture: Input → Embedding → GRU steps → Output projection → Logits
-    """
-
-    def __init__(self, vocab_size, embedding_dimension=512, hidden_dimension=1024):
-        """
-        Initialize the language model.
-
-        Args:
-            vocab_size (int): Size of the vocabulary.
-            embed_dim (int): Dimension of the embedding layer.
-            hidden_dim (int): Dimension of the hidden state.
-        """
+class FeedForward(nn.Module):
+    def __init__(self, d_model, d_ff=None):
         super().__init__()
-        self.hidden_dim = hidden_dimension
-        self.embed_dim = embedding_dimension
-        self.hidden_dim = hidden_dimension
-        self.vocab_size = vocab_size
+        if d_ff is None:
+            d_ff = 4 * d_model # Standard expansion
 
-        self.embedding = nn.Embedding(self.vocab_size, self.embed_dim)  # Embedding Layer for input text.
-
-        # GRU Gate weights:
-        # W_z: Update gate - controls how much of previous memory to keep
-        # W_r: Reset gate - controls how much of previous memory to forget
-        # W_n: Candidate gate - computes new memory candidate
-        # W_out: Output projection - maps hidden state to vocabulary logits
-        self.W_z = nn.Linear(self.embed_dim + self.hidden_dim, self.hidden_dim)
-        self.W_r = nn.Linear(self.embed_dim + self.hidden_dim, self.hidden_dim)
-        self.W_n = nn.Linear(self.embed_dim + self.hidden_dim, self.hidden_dim)
-        self.W_out = nn.Linear(self.hidden_dim, self.vocab_size)
-
-        # Layer normalization for stability
-        self.ln_combined = nn.LayerNorm(self.embed_dim + self.hidden_dim)
-        self.ln_hidden = nn.LayerNorm(self.hidden_dim)
-
-    def step(self, x_t, memory):
-        """
-        Single GRU step: compute next hidden state and logits from input token and previous memory.
-
-        Args:
-            x_t: Input token indices (B,)
-            memory: Previous hidden state (B, H)
-
-        Returns:
-            logits: Output logits for next token prediction (B, V)
-            final_memory: Updated hidden state (B, H)
-        """
-        # Embed input token
-        x_emb = self.embedding(x_t)                  # (B, D)
-
-        # Concatenate previous memory and current input embedding
-        combined = torch.cat([memory, x_emb], dim=1) # (B, H+D)
-        combined = self.ln_combined(combined)        # Layer norm for stability
-
-        # Reset gate: decides what parts of previous memory to forget
-        reset_gate_activations = torch.sigmoid(self.W_r(combined)) # (B, H)
-        reset_memory = reset_gate_activations * memory # (B, H) - selectively forget
-
-        # Compute candidate memory with reset memory
-        reset_combined = torch.cat([reset_memory, x_emb], dim=1) # (B, H+D)
-        reset_combined = self.ln_combined(reset_combined)
-        candidate_memory = torch.tanh(self.W_n(reset_combined)) # (B, H) - new candidate
-        candidate_memory = self.ln_hidden(candidate_memory)
-
-        # Update gate: decides how much to update from candidate vs keep old
-        update_gate_activations = torch.sigmoid(self.W_z(combined))  # (B, H)
-
-        # Final memory: interpolation between old memory and candidate
-        final_memory = update_gate_activations * memory + (1 - update_gate_activations) * candidate_memory # (B, H)
-
-        # Output logits for next token prediction
-        logits = self.W_out(final_memory)  # (B, V)
-
-        return logits, final_memory
-
-    def forward(self, x, y=None):
-        """
-        Process a sequence of tokens through the GRU language model.
-
-        Args:
-            x: Input token sequences (B, T) - batch_size x sequence_length
-            y: Target token sequences (B, T) - for training loss computation
-
-        Returns:
-            logits: Token prediction logits (B, T, V)
-            memory: Final hidden state (B, H)
-            loss: Cross-entropy loss if y provided, else None
-        """
-        B, T = x.shape
-        device = x.device
-
-        # Initialize hidden state (memory) to zeros
-        memory = torch.zeros(B, self.hidden_dim, device=device)
-        logits_seq = []
-
-        # Process each token in sequence
-        for t in range(T):
-            logits, memory = self.step(x[:, t], memory)  # Step through one token
-            logits_seq.append(logits)
-
-        # Stack logits for all timesteps: (B, T, V)
-        logits = torch.stack(logits_seq, dim=1)
-
-        if y is None:
-            return logits, memory, None
-
-        # Compute cross-entropy loss if targets provided
-        loss = F.cross_entropy(
-            logits.view(B*T, -1),  # Flatten to (B*T, V)
-            y.view(B*T)            # Flatten to (B*T,)
+        self.net = nn.Sequential(
+            nn.Linear(d_model, d_ff),
+            nn.GELU(), 
+            nn.Linear(d_ff, d_model)
         )
 
-        return logits, memory, loss
+    def forward(self, x):
+        return self.net(x)
+    
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, d_model, num_heads):
+        super().__init__()
+        assert d_model % num_heads == 0
+
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_k = d_model // num_heads
+
+        self.W_q = nn.Linear(d_model, d_model)
+        self.W_k = nn.Linear(d_model, d_model)
+        self.W_v = nn.Linear(d_model, d_model)
+        self.W_o = nn.Linear(d_model, d_model)
+
+    def forward(self, x):
+        B, T, C = x.shape  # batch, tokens, channels
+
+        Q = self.W_q(x)
+        K = self.W_k(x)
+        V = self.W_v(x)
+
+        # split heads
+        Q = Q.view(B, T, self.num_heads, self.d_k).transpose(1, 2)
+        K = K.view(B, T, self.num_heads, self.d_k).transpose(1, 2)
+        V = V.view(B, T, self.num_heads, self.d_k).transpose(1, 2)
+
+        # attention
+        scores = (Q @ K.transpose(-2, -1)) / (self.d_k ** 0.5)
+
+        # causal mask (block future tokens)
+        mask = torch.triu(torch.ones(T, T, device=x.device), diagonal=1)  # (T, T)
+        scores = scores.masked_fill(mask == 1, float('-inf'))
+
+        weights = F.softmax(scores, dim=-1)
+        out = weights @ V
+
+        # combine heads
+        out = out.transpose(1, 2).contiguous().view(B, T, C)
+
+        return self.W_o(out)
+    
+
+class TransformerBlock(nn.Module):
+    def __init__(self, d_model, num_heads):
+        super().__init__()
+        self.attn = MultiHeadAttention(d_model, num_heads)
+        self.ln1 = nn.LayerNorm(d_model)
+        self.ff = FeedForward(d_model, d_ff=4*d_model) # Expanded for better capacity
+        self.ln2 = nn.LayerNorm(d_model)
+
+    def forward(self, x):
+        # Pre-LayerNorm Residual Connections
+        x = x + self.attn(self.ln1(x))
+        x = x + self.ff(self.ln2(x))
+        return x
+    
+
+class SinusoidalPositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=1000):
+        super().__init__()
+
+        # Create positional encoding matrix (max_len, d_model)
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len).unsqueeze(1)  # (max_len, 1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model)) 
+
+        pe[:, 0::2] = torch.sin(position * div_term)  # even indices
+        pe[:, 1::2] = torch.cos(position * div_term)  # odd indices
+
+        pe = pe.unsqueeze(0)  # (1, max_len, d_model)        
+        self.register_buffer("pe", pe) # Register as buffer (not trainable, but moves with model)
+
+    def forward(self, x):
+        """
+        x: (batch_size, seq_len, d_model)
+        """
+        return x + self.pe[:, :x.size(1)]
+
+
+class TinyStoriesLanguageModel(nn.Module):
+    def __init__(self, vocab_size, d_model=256, num_heads=8, max_seq_len=1000, num_layers=1):
+        super().__init__()
+
+        self.embedding = nn.Embedding(vocab_size, d_model)
+        self.pos_embedding = SinusoidalPositionalEncoding(d_model, max_len=max_seq_len)
+        self.transformer_blocks = nn.Sequential(
+            *[TransformerBlock(d_model, num_heads) for _ in range(num_layers)]
+        )
+        self.lm_head = nn.Linear(d_model, vocab_size)
+
+    def forward(self, x, y=None):
+        x = self.embedding(x)
+        x = self.pos_embedding(x)
+        x = self.transformer_blocks(x)
+        x = self.lm_head(x)
+
+        if y is not None:
+            # Compute loss
+            B, T, C = x.shape
+            x = x.view(B * T, C)
+            y = y.view(B * T)
+            loss = F.cross_entropy(x, y)
+            return x, loss
+
+        return x, None
+    
 
     def generate(
         self,
-        x,
+        idx,
         tokenizer,
-        max_new_tokens=50,
+        max_new_tokens=100,
         temperature=1.0,
         top_k=None,
         top_p=None,
         stream=False,
     ):
-        """
-        Generate text continuation from input sequence using the language model.
-
-        Args:
-            x: Input token sequence (B, T) or text string
-            tokenizer: Tokenizer for encoding/decoding
-            max_new_tokens: Maximum tokens to generate
-            temperature: Sampling temperature (higher = more random)
-            top_k: Top-k sampling parameter
-            top_p: Nucleus sampling parameter
-            stream: Whether to yield tokens one by one
-
-        Returns:
-            Generated text string, or token-by-token generator if stream=True
-        """
         self.eval()
-        B = x.shape[0]
-        device = x.device
-
-        memory = torch.zeros(B, self.hidden_dim, device=device)
+        device = idx.device
         eos_token_id = tokenizer.token_to_id("<|end_of_text|>")
-
         temperature = max(temperature, 1e-5)
 
         def sample(logits):
-            if temperature == 0:
-                return torch.argmax(logits, dim=-1)
-
-            logits_ = logits / temperature
+            # Focus only on the last token's logits: (B, C)
+            logits = logits[:, -1, :] / temperature
 
             if top_k is not None:
-                k = min(top_k, logits_.size(-1))
-                values, indices = torch.topk(logits_, k)
-                probs = F.softmax(values, dim=-1)
-                return indices.gather(-1, torch.multinomial(probs, 1)).squeeze(1)
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = -float('Inf')
 
             if top_p is not None:
-                sorted_logits, sorted_indices = torch.sort(logits_, descending=True)
-                probs = F.softmax(sorted_logits, dim=-1)
-                cumulative_probs = torch.cumsum(probs, dim=-1)
+                sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+                cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                sorted_indices_to_remove = cumulative_probs > top_p
+                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                sorted_indices_to_remove[..., 0] = 0
+                
+                indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+                logits[indices_to_remove] = -float('Inf')
 
-                mask = cumulative_probs > top_p
-                mask[:, 1:] = mask[:, :-1].clone()
-                mask[:, 0] = False
+            probs = F.softmax(logits, dim=-1)
+            return torch.multinomial(probs, num_samples=1)
 
-                sorted_logits[mask] = -float("inf")
-                probs = F.softmax(sorted_logits, dim=-1)
-
-                return sorted_indices.gather(
-                    -1, torch.multinomial(probs, 1)
-                ).squeeze(1)
-
-            probs = F.softmax(logits_, dim=-1)
-            return torch.multinomial(probs, 1).squeeze(1)
-
-        def _generate_tokens():
-            """Generator function for streaming output."""
-            nonlocal memory
-            with torch.no_grad():
-                # Process prompt
-                for t in range(x.shape[1]):
-                    _, memory = self.step(x[:, t], memory)
-
-                last_token = x[:, -1]
-
-                for _ in range(max_new_tokens):
-                    logits, memory = self.step(last_token, memory)
-                    next_token = sample(logits)
-                    token_id = next_token.item()
-
-                    if token_id == eos_token_id:
-                        break
-
-                    # Decode the new token with proper whitespace handling
-                    token_text = tokenizer.decode([token_id])
-                    yield token_text
-
-                    last_token = next_token
+        def _generate_tokens(idx):
+            for _ in range(max_new_tokens):
+                # Crop context to max_len so positional embeddings don't overflow
+                idx_cond = idx if idx.size(1) <= self.pos_embedding.pe.size(1) else idx[:, -self.pos_embedding.pe.size(1):]
+                
+                # Get predictions
+                logits, _ = self(idx_cond)
+                
+                # Sample next token
+                next_token = sample(logits)
+                
+                if next_token.item() == eos_token_id:
+                    break
+                
+                idx = torch.cat((idx, next_token), dim=1)
+                yield tokenizer.decode([next_token.item()])
 
         if stream:
-            return _generate_tokens()
+            return _generate_tokens(idx)
         else:
             generated_tokens = []
             with torch.no_grad():
-                # Process prompt
-                for t in range(x.shape[1]):
-                    _, memory = self.step(x[:, t], memory)
-
-                last_token = x[:, -1]
-
                 for _ in range(max_new_tokens):
-                    logits, memory = self.step(last_token, memory)
+                    idx_cond = idx if idx.size(1) <= self.pos_embedding.pe.size(1) else idx[:, -self.pos_embedding.pe.size(1):]
+                    logits, _ = self(idx_cond)
                     next_token = sample(logits)
-                    token_id = next_token.item()
-                    generated_tokens.append(token_id)
-
-                    if token_id == eos_token_id:
+                    
+                    if next_token.item() == eos_token_id:
                         break
-
-                    last_token = next_token
-                
-            generated_text = tokenizer.decode(generated_tokens)
-
-            return generated_text
+                        
+                    idx = torch.cat((idx, next_token), dim=1)
+                    generated_tokens.append(next_token.item())
+            
+            return tokenizer.decode(generated_tokens)
