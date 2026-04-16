@@ -205,20 +205,52 @@ def process_and_upload_dataset(dataset_name,
             logger.info(f"Cleaned up temporary directory: {temp_dir}")
 
 
-def prepare_datasets(dataset):
+def _truncate_example(example, fixed_length):
+    """Truncate input/output sequences to a fixed length."""
+    return {
+        "input_ids": example["input_ids"][:fixed_length],
+        "output_ids": example["output_ids"][:fixed_length],
+    }
+
+
+def prepare_datasets(dataset, fixed_input_length=None):
     """
-    Prepare the datasets by adding padding and creating input/output sequences.
+    Prepare the datasets by selecting input/output columns and optionally enforcing a fixed sequence length.
 
     Args:
         dataset (DatasetDict): The loaded dataset.
-        eot_token_id (int): The token ID for end-of-text.
+        fixed_input_length (int, optional): If set, truncates all input/output sequences to this length.
 
     Returns:
         tuple: Final train and validation datasets.
     """
     logger.info("Preparing datasets with padding and sequence creation")
-    train_dataset = dataset['train'].select_columns(["input_ids", "output_ids"])
-    validation_dataset = dataset['validation'].select_columns(["input_ids", "output_ids"])
+
+    train_dataset = dataset['train']
+    validation_dataset = dataset['validation']
+
+    if fixed_input_length is not None:
+        if fixed_input_length <= 0:
+            raise ValueError("fixed_input_length must be a positive integer")
+
+        logger.info("Enforcing fixed sequence length: %d", fixed_input_length)
+        train_dataset = train_dataset.filter(
+            lambda x: len(x["input_ids"]) >= fixed_input_length,
+            num_proc=1
+        ).map(
+            partial(_truncate_example, fixed_length=fixed_input_length),
+            num_proc=1
+        )
+        validation_dataset = validation_dataset.filter(
+            lambda x: len(x["input_ids"]) >= fixed_input_length,
+            num_proc=1
+        ).map(
+            partial(_truncate_example, fixed_length=fixed_input_length),
+            num_proc=1
+        )
+
+    train_dataset = train_dataset.select_columns(["input_ids", "output_ids"])
+    validation_dataset = validation_dataset.select_columns(["input_ids", "output_ids"])
 
     logger.info("Datasets prepared successfully")
     return train_dataset, validation_dataset

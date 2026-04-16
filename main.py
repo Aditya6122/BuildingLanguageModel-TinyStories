@@ -309,7 +309,10 @@ def main():
 
     # Prepare datasets
     logger.info("Preparing datasets...")
-    final_train_dataset, final_validation_dataset = prepare_datasets(dataset)
+    if args.train_sample:
+        final_train_dataset, final_validation_dataset = prepare_datasets(dataset)
+    else:
+        final_train_dataset, final_validation_dataset = prepare_datasets(dataset)
 
     if args.train_sample:
         logger.info("Running a quick training sample for testing the pipeline...")

@@ -65,7 +65,7 @@ def train_model(
             x_batch = x_batch.to(device)
             y_batch = y_batch.to(device)
 
-            logits, loss = model(x_batch, y_batch)
+            logits, loss = model(x_batch, y_batch, pad_token_id=0)
 
             optimizer.zero_grad()
             loss.backward()

@@ -24,17 +24,17 @@ DATASET_NAME = "aditya-6122/tinystories-custom-dataset-18542-v2-test"
 TOKENIZER_NAME = "aditya-6122/tinystories-tokenizer-vb-18542-byte_level_bpe-v3-test"
 
 # Model hyperparameters
-EMBEDDING_DIMENSION = 128
-NUM_HEADS = 4
-MAX_SEQ_LEN = 500
-NUM_LAYERS = 3
+EMBEDDING_DIMENSION = 256 # Default : 256
+NUM_HEADS = 8 # Default : 8
+MAX_SEQ_LEN = 500 # Default : 500
+NUM_LAYERS = 4 # Default : 4
 
 # Training hyperparameters
-LEARNING_RATE = 1e-3
-EPOCHS = 1
-BATCH_SIZE = 2
-NUM_WORKERS = 2
+LEARNING_RATE = 1e-3 # Default : 1e-3
+EPOCHS = 5 # Default : 5
+BATCH_SIZE = 64 # Default : 64
+NUM_WORKERS = 2 # Default : 2 for Colab, adjust as needed for local training
 
 # Experiment configuration
-RUN_NAME = "test"
-MODEL_NAME = "test"
+RUN_NAME = "LM-TinyStories-AttentionMasking-PadFix" # Current : "LM-TinyStories-PadFix"
+MODEL_NAME = "LM-TinyStories-AttentionMasking-PadFix" # Current : "LM-TinyStories-PadFix"

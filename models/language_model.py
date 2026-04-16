@@ -1,7 +1,11 @@
 import math
+from matplotlib.pylab import block
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class FeedForward(nn.Module):
@@ -34,7 +38,12 @@ class MultiHeadAttention(nn.Module):
         self.W_v = nn.Linear(d_model, d_model)
         self.W_o = nn.Linear(d_model, d_model)
 
-    def forward(self, x):
+    def forward(self, x, pad_mask=None):
+
+        logger.debug(f"Input to MultiHeadAttention: {x.shape}")
+        logger.debug(f"Number of heads: {self.num_heads}, d_model: {self.d_model}, d_k: {self.d_k}")
+        logger.debug(f"Input x:\n{x}")
+
         B, T, C = x.shape  # batch, tokens, channels
 
         Q = self.W_q(x)
@@ -49,9 +58,21 @@ class MultiHeadAttention(nn.Module):
         # attention
         scores = (Q @ K.transpose(-2, -1)) / (self.d_k ** 0.5)
 
+        logger.debug(f"Attention Scores shape: {scores.shape}")
+        logger.debug(f"Attention scores:\n{scores}")
+
         # causal mask (block future tokens)
         mask = torch.triu(torch.ones(T, T, device=x.device), diagonal=1)  # (T, T)
         scores = scores.masked_fill(mask == 1, float('-inf'))
+
+        logger.debug(f"Masked Attention Scores shape: {scores.shape}")
+        logger.debug(f"Masked attention scores:\n{scores}")
+
+        if pad_mask is not None:
+            scores = scores.masked_fill(pad_mask == 0, float('-inf'))
+
+        logger.debug(f"Padding Masked Attention Scores shape: {scores.shape}")
+        logger.debug(f"Padding Masked attention scores:\n{scores}")
 
         weights = F.softmax(scores, dim=-1)
         out = weights @ V
@@ -70,11 +91,11 @@ class TransformerBlock(nn.Module):
         self.ff = FeedForward(d_model, d_ff=4*d_model) # Expanded for better capacity
         self.ln2 = nn.LayerNorm(d_model)
 
-    def forward(self, x):
+    def forward(self, x, pad_mask=None):
         # Pre-LayerNorm Residual Connections
-        x = x + self.attn(self.ln1(x))
+        x = x + self.attn(self.ln1(x), pad_mask=pad_mask)
         x = x + self.ff(self.ln2(x))
-        return x
+        return x    
     
 
 class SinusoidalPositionalEncoding(nn.Module):
@@ -110,10 +131,12 @@ class TinyStoriesLanguageModel(nn.Module):
         )
         self.lm_head = nn.Linear(d_model, vocab_size)
 
-    def forward(self, x, y=None):
+    def forward(self, x, y=None, pad_token_id=None):
+        pad_mask = (x != pad_token_id).unsqueeze(1).unsqueeze(2) if pad_token_id is not None else None
         x = self.embedding(x)
         x = self.pos_embedding(x)
-        x = self.transformer_blocks(x)
+        for block in self.transformer_blocks:
+            x = block(x, pad_mask=pad_mask)
         x = self.lm_head(x)
 
         if y is not None:
@@ -121,7 +144,7 @@ class TinyStoriesLanguageModel(nn.Module):
             B, T, C = x.shape
             x = x.view(B * T, C)
             y = y.view(B * T)
-            loss = F.cross_entropy(x, y)
+            loss = F.cross_entropy(x, y, ignore_index=0)
             return x, loss
 
         return x, None
@@ -131,7 +154,7 @@ class TinyStoriesLanguageModel(nn.Module):
         self,
         idx,
         tokenizer,
-        max_new_tokens=100,
+        max_new_tokens=500,
         temperature=1.0,
         top_k=None,
         top_p=None,
