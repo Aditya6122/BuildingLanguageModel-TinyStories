@@ -137,7 +137,8 @@ class LanguageModel(nn.Module):
         # Compute cross-entropy loss if targets provided
         loss = F.cross_entropy(
             logits.view(B*T, -1),  # Flatten to (B*T, V)
-            y.view(B*T)            # Flatten to (B*T,)
+            y.view(B*T), # Flatten to (B*T,)
+            ignore_index=0           
         )
 
         return logits, memory, loss

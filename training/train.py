@@ -24,7 +24,7 @@ def train_model(
     device="cuda",
     checkpoint_dir="./model_artifacts",
     validation_prompt="Once upon a time",
-    max_new_tokens=100,
+    max_new_tokens=500,
 ):
     """
     Train the language model with validation and logging.
@@ -115,7 +115,7 @@ def train_model(
             input_token_id = tokenizer.encode(input_word).ids
 
             input_tensor = torch.tensor([input_token_id]).to(device)
-            generated_text = model.generate(input_tensor, tokenizer, max_new_tokens=max_new_tokens)
+            generated_text = model.generate(input_tensor, tokenizer, max_new_tokens=max_new_tokens, temperature=0)
             output_words = input_word + generated_text
             logger.info(f"Generated Story: {output_words}")
 

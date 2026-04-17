@@ -29,10 +29,10 @@ HIDDEN_DIMENSION = 1024
 
 # Training hyperparameters
 LEARNING_RATE = 1e-3
-EPOCHS = 1
-BATCH_SIZE = 2
-NUM_WORKERS = 1
+EPOCHS = 5
+BATCH_SIZE = 64
+NUM_WORKERS = 2
 
 # Experiment configuration
-RUN_NAME = "LM-v33"
-MODEL_NAME = "vanilla-rnn-gru-like"
+RUN_NAME = "GRU-LM-PadFix"
+MODEL_NAME = "GRU-LM-PadFix"

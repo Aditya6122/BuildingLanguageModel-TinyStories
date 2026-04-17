@@ -262,7 +262,7 @@ def parse_args():
     parser.add_argument("--checkpoint-dir", type=str, default="./model_artifacts")
     parser.add_argument("--wandb-project", type=str, default="tinystories-training")
     parser.add_argument("--validation-prompt", type=str, default="Once upon a time")
-    parser.add_argument("--max-new-tokens", type=int, default=100)
+    parser.add_argument("--max-new-tokens", type=int, default=500)
 
     return parser.parse_args()
 
