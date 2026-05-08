@@ -38,13 +38,8 @@ class MultiHeadAttention(nn.Module):
         self.W_v = nn.Linear(d_model, d_model)
         self.W_o = nn.Linear(d_model, d_model)
 
-    def forward(self, x, pad_mask=None):
-
-        logger.debug(f"Input to MultiHeadAttention: {x.shape}")
-        logger.debug(f"Number of heads: {self.num_heads}, d_model: {self.d_model}, d_k: {self.d_k}")
-        logger.debug(f"Input x:\n{x}")
-
-        B, T, C = x.shape  # batch, tokens, channels
+    def forward(self, x, pad_mask=None, past_k=None, past_v=None):
+        B, T, C = x.shape
 
         Q = self.W_q(x)
         K = self.W_k(x)
@@ -55,24 +50,24 @@ class MultiHeadAttention(nn.Module):
         K = K.view(B, T, self.num_heads, self.d_k).transpose(1, 2)
         V = V.view(B, T, self.num_heads, self.d_k).transpose(1, 2)
 
+        # 🔥 KV CACHE LOGIC
+        if past_k is not None and past_v is not None:
+            # concatenate past and current
+            K = torch.cat([past_k, K], dim=2)  # (B, heads, T_total, d_k)
+            V = torch.cat([past_v, V], dim=2)
+
+        # save new cache
+        new_k, new_v = K, V
+
         # attention
         scores = (Q @ K.transpose(-2, -1)) / (self.d_k ** 0.5)
 
-        logger.debug(f"Attention Scores shape: {scores.shape}")
-        logger.debug(f"Attention scores:\n{scores}")
+        if past_k is None:
+            mask = torch.triu(torch.ones(T, T, device=x.device), diagonal=1)
+            scores = scores.masked_fill(mask == 1, float('-inf'))
 
-        # causal mask (block future tokens)
-        mask = torch.triu(torch.ones(T, T, device=x.device), diagonal=1)  # (T, T)
-        scores = scores.masked_fill(mask == 1, float('-inf'))
-
-        logger.debug(f"Masked Attention Scores shape: {scores.shape}")
-        logger.debug(f"Masked attention scores:\n{scores}")
-
-        if pad_mask is not None:
+        if pad_mask is not None and past_k is None:
             scores = scores.masked_fill(pad_mask == 0, float('-inf'))
-
-        logger.debug(f"Padding Masked Attention Scores shape: {scores.shape}")
-        logger.debug(f"Padding Masked attention scores:\n{scores}")
 
         weights = F.softmax(scores, dim=-1)
         out = weights @ V
@@ -80,8 +75,7 @@ class MultiHeadAttention(nn.Module):
         # combine heads
         out = out.transpose(1, 2).contiguous().view(B, T, C)
 
-        return self.W_o(out)
-    
+        return self.W_o(out), new_k, new_v
 
 class TransformerBlock(nn.Module):
     def __init__(self, d_model, num_heads):
@@ -91,11 +85,18 @@ class TransformerBlock(nn.Module):
         self.ff = FeedForward(d_model, d_ff=4*d_model) # Expanded for better capacity
         self.ln2 = nn.LayerNorm(d_model)
 
-    def forward(self, x, pad_mask=None):
-        # Pre-LayerNorm Residual Connections
-        x = x + self.attn(self.ln1(x), pad_mask=pad_mask)
+    def forward(self, x, pad_mask=None, past_k=None, past_v=None):
+        attn_out, new_k, new_v = self.attn(
+            self.ln1(x),
+            pad_mask=pad_mask,
+            past_k=past_k,
+            past_v=past_v
+        )
+
+        x = x + attn_out
         x = x + self.ff(self.ln2(x))
-        return x    
+
+        return x, new_k, new_v  
     
 
 class SinusoidalPositionalEncoding(nn.Module):
@@ -113,11 +114,12 @@ class SinusoidalPositionalEncoding(nn.Module):
         pe = pe.unsqueeze(0)  # (1, max_len, d_model)        
         self.register_buffer("pe", pe) # Register as buffer (not trainable, but moves with model)
 
-    def forward(self, x):
+    def forward(self, x, start_pos=0):
         """
         x: (batch_size, seq_len, d_model)
+        start_pos: where this chunk starts in sequence
         """
-        return x + self.pe[:, :x.size(1)]
+        return x + self.pe[:, start_pos:start_pos + x.size(1)]
 
 
 class TinyStoriesLanguageModel(nn.Module):
@@ -131,23 +133,37 @@ class TinyStoriesLanguageModel(nn.Module):
         )
         self.lm_head = nn.Linear(d_model, vocab_size)
 
-    def forward(self, x, y=None, pad_token_id=None):
+    def forward(self, x, y=None, pad_token_id=None, past_kvs=None):
         pad_mask = (x != pad_token_id).unsqueeze(1).unsqueeze(2) if pad_token_id is not None else None
+
+        # 🔥 compute starting position
+        if past_kvs is None:
+            start_pos = 0
+        else:
+            # length of cached sequence
+            start_pos = past_kvs[0][0].size(2)
+
         x = self.embedding(x)
-        x = self.pos_embedding(x)
-        for block in self.transformer_blocks:
-            x = block(x, pad_mask=pad_mask)
+        x = self.pos_embedding(x, start_pos=start_pos)
+
+        new_kvs = []
+
+        for i, block in enumerate(self.transformer_blocks):
+            past_k, past_v = (past_kvs[i] if past_kvs is not None else (None, None))
+
+            x, new_k, new_v = block(x, pad_mask=pad_mask, past_k=past_k, past_v=past_v)
+            new_kvs.append((new_k, new_v))
+
         x = self.lm_head(x)
 
         if y is not None:
-            # Compute loss
             B, T, C = x.shape
             x = x.view(B * T, C)
             y = y.view(B * T)
             loss = F.cross_entropy(x, y, ignore_index=0)
             return x, loss
 
-        return x, None
+        return x, new_kvs
     
 
     def generate(
@@ -166,7 +182,6 @@ class TinyStoriesLanguageModel(nn.Module):
         temperature = max(temperature, 1e-5)
 
         def sample(logits):
-            # Focus only on the last token's logits: (B, C)
             logits = logits[:, -1, :] / temperature
 
             if top_k is not None:
@@ -187,36 +202,58 @@ class TinyStoriesLanguageModel(nn.Module):
             return torch.multinomial(probs, num_samples=1)
 
         def _generate_tokens(idx):
-            for _ in range(max_new_tokens):
-                # Crop context to max_len so positional embeddings don't overflow
-                idx_cond = idx if idx.size(1) <= self.pos_embedding.pe.size(1) else idx[:, -self.pos_embedding.pe.size(1):]
-                
-                # Get predictions
-                logits, _ = self(idx_cond)
-                
+            past_kvs = None  # 🔥 KV cache initialization
+
+            for step in range(max_new_tokens):
+
+                # 🔥 First step: full sequence
+                # 🔥 Later steps: only last token
+                if past_kvs is None:
+                    idx_cond = idx
+                else:
+                    idx_cond = idx[:, -1:]
+
+                logger.debug(f"Step {step} | Input shape: {idx_cond.shape}")
+
+                # 🔥 Forward with KV cache
+                logits, past_kvs = self(idx_cond, past_kvs=past_kvs)
+
                 # Sample next token
                 next_token = sample(logits)
-                
+
                 if next_token.item() == eos_token_id:
                     break
-                
+
+                # Append to sequence
                 idx = torch.cat((idx, next_token), dim=1)
-                yield tokenizer.decode([next_token.item()])
+
+                output_token = tokenizer.decode([next_token.item()])
+                yield output_token
 
         if stream:
             return _generate_tokens(idx)
+
         else:
             generated_tokens = []
+            past_kvs = None  # 🔥 KV cache
+
             with torch.no_grad():
-                for _ in range(max_new_tokens):
-                    idx_cond = idx if idx.size(1) <= self.pos_embedding.pe.size(1) else idx[:, -self.pos_embedding.pe.size(1):]
-                    logits, _ = self(idx_cond)
+                for step in range(max_new_tokens):
+
+                    # 🔥 Same logic as above
+                    if past_kvs is None:
+                        idx_cond = idx
+                    else:
+                        idx_cond = idx[:, -1:]
+
+                    logits, past_kvs = self(idx_cond, past_kvs=past_kvs)
+
                     next_token = sample(logits)
-                    
+
                     if next_token.item() == eos_token_id:
                         break
-                        
+
                     idx = torch.cat((idx, next_token), dim=1)
                     generated_tokens.append(next_token.item())
-            
+
             return tokenizer.decode(generated_tokens)

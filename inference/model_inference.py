@@ -8,7 +8,7 @@ from tokenizers import Tokenizer
 from huggingface_hub import hf_hub_download
 
 from config import HF_TOKEN
-from models.language_model import LanguageModel
+from models.language_model import TinyStoriesLanguageModel as LanguageModel
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     parser.add_argument('--model-repo', type=str, default='aditya-6122/tiny-stories-vb-17831-cbpe-v1', help='Hugging Face model repository (e.g., user/repo-name)')
     parser.add_argument('--start-text', type=str, default='Once there was a', help='Starting text for generation')
     parser.add_argument('--max-new-tokens', type=int, default=1000, help='Maximum number of new tokens to generate')
-    parser.add_argument('--temperature', type=float, default=0.2, help='Sampling temperature (0 for greedy, higher for more random)')
+    parser.add_argument('--temperature', type=float, default=0, help='Sampling temperature (0 for greedy, higher for more random)')
     parser.add_argument('--top-k', type=int, default=None, help='Top-k sampling (optional)')
     parser.add_argument('--top-p', type=float, default=None, help='Top-p (nucleus) sampling (optional)')
     parser.add_argument('--stream', action='store_true', default=False, help='Stream output token by token (default: True)')
